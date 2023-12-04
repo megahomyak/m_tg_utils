@@ -1,18 +1,29 @@
-from typing import List
+from typing import TYPE_CHECKING, List
 from aiogram import Bot as AiogramBot
 from aiogram import Dispatcher
 from aiogram.types import Document, Message
 import asyncio
 import logging
 import sys
-from dataclasses import dataclass
 import itertools
 
 
-@dataclass
-class MessageUpdate:
-    message: Message
-    media: List[Document]
+if TYPE_CHECKING:
+    class MessageWithAttachments(Message):
+        attachments: List[Document]
+else:
+    class MessageWithAttachments:
+        def __init__(self, inner_message, attachments):
+            self._inner_message = inner_message
+            self._attachments = attachments
+
+        def __getattritute__(self, name):
+            if name == "attachments":
+                return self._attachments
+            return getattr(self._inner_message, name)
+
+        def __setattr__(self, name, value):
+            setattr(self._inner_message, name, value)
 
 
 class MessageOrganizer:
@@ -27,9 +38,9 @@ class MessageOrganizer:
                 media = []
             else:
                 media = [message.document]
-            self.ungrouped.append(MessageUpdate(message, media))
+            self.ungrouped.append(MessageWithAttachments(message, media))
         else:
-            self.grouped.setdefault(message.media_group_id, MessageUpdate(message, [])).media.append(message.document)
+            self.grouped.setdefault(message.media_group_id, MessageWithAttachments(message, []))._attachments.append(message.document)
 
 
 class Bot(AiogramBot):
