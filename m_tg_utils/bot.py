@@ -1,15 +1,18 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 from aiogram import Bot as AiogramBot
-from aiogram.types import Document, InputMedia, InputMediaAnimation, InputMediaAudio, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message
+from aiogram.types import InputMediaAudio, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message
 import asyncio
 import logging
 import sys
 import itertools
 
 
+SendableAttachment = Union[InputMediaAudio, InputMediaVideo, InputMediaPhoto, InputMediaDocument]
+
+
 if TYPE_CHECKING:
     class MessageWithAttachments(Message):
-        attachments: List[Document]
+        attachments: List[SendableAttachment]
 else:
     class MessageWithAttachments:
         def __init__(self, inner_message, attachments):
@@ -34,7 +37,7 @@ class _MessageOrganizer:
         self.ungrouped = []
         self.grouped = {}
 
-    def add(self, message: Message, file: Optional[InputMedia]):
+    def add(self, message: Message, file: Optional[SendableAttachment]):
         if message.media_group_id is None:
             if file is None:
                 files = []
@@ -45,7 +48,7 @@ class _MessageOrganizer:
             self.grouped.setdefault(message.media_group_id, MessageWithAttachments(message, [])).attachments.append(file)
 
 
-def _get_file(message: Message) -> Optional[InputMedia]:
+def _get_sendable_attachment(message: Message) -> Optional[SendableAttachment]:
     if message.photo is not None:
         biggest_photo = max(message.photo, key=lambda photo: photo.width * photo.height)
         return InputMediaPhoto(media=biggest_photo.file_id)
@@ -55,8 +58,6 @@ def _get_file(message: Message) -> Optional[InputMedia]:
         return InputMediaVideo(media=message.video.file_id)
     if message.audio is not None:
         return InputMediaAudio(media=message.audio.file_id)
-    if message.animation is not None:
-        return InputMediaAnimation(media=message.animation.file_id)
     return None
 
 
@@ -77,7 +78,7 @@ class Bot(AiogramBot):
                     organizer = _MessageOrganizer()
                     for update in updates:
                         if update.message is not None:
-                            organizer.add(update.message, _get_file(update.message))
+                            organizer.add(update.message, _get_sendable_attachment(update.message))
                         elif update.callback_query is not None:
                             if self._callback_query_handler is not None:
                                 asyncio.create_task(self._callback_query_handler(update.callback_query))
@@ -95,7 +96,7 @@ class Bot(AiogramBot):
         self._callback_query_handler = function
 
 
-def caption(input_media: List[InputMedia], caption, caption_entities=None):
+def caption(input_media: List[SendableAttachment], caption, caption_entities=None):
     first, *rest = input_media
     repacked = type(first)(media=first.media, caption=caption, caption_entities=caption_entities)
     return [repacked] + rest
