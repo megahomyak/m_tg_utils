@@ -96,7 +96,7 @@ class Bot(AiogramBot):
         self._callback_query_handler = function
 
 
-def caption(input_media: List[SendableAttachment], caption, caption_entities=None):
+def caption(input_media: List[SendableAttachment], caption, caption_entities=None) -> List[SendableAttachment]:
     first, *rest = input_media
     repacked = type(first)(media=first.media, caption=caption, caption_entities=caption_entities)
     return [repacked] + rest
