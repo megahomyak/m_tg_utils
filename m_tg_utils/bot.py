@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, List, Optional
 from aiogram import Bot as AiogramBot
-from aiogram import Dispatcher
 from aiogram.types import Document, InputMedia, InputMediaAnimation, InputMediaAudio, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message
 import asyncio
 import logging
@@ -46,6 +45,21 @@ class _MessageOrganizer:
             self.grouped.setdefault(message.media_group_id, MessageWithAttachments(message, [])).attachments.append(file)
 
 
+def _get_file(message: Message) -> Optional[InputMedia]:
+    if message.photo is not None:
+        biggest_photo = max(message.photo, key=lambda photo: photo.width * photo.height)
+        return InputMediaPhoto(media=biggest_photo.file_id)
+    if message.document is not None:
+        return InputMediaDocument(media=message.document.file_id)
+    if message.video is not None:
+        return InputMediaVideo(media=message.video.file_id)
+    if message.audio is not None:
+        return InputMediaAudio(media=message.audio.file_id)
+    if message.animation is not None:
+        return InputMediaAnimation(media=message.animation.file_id)
+    return None
+
+
 class Bot(AiogramBot):
 
     def __init__(self, token: str):
@@ -57,13 +71,13 @@ class Bot(AiogramBot):
     def start(self, enable_logging=True):
         async def start():
             while True:
-                updates = await self.get_updates(offset=self._update_offset)
+                updates = await self.get_updates(offset=self._update_offset, timeout=20)
                 if updates:
                     self._update_offset = max(updates, key=lambda update: update.update_id).update_id + 1
                     organizer = _MessageOrganizer()
                     for update in updates:
                         if update.message is not None:
-                            organizer.add(update.message, self.get_file(update.message))
+                            organizer.add(update.message, _get_file(update.message))
                         elif update.callback_query is not None:
                             if self._callback_query_handler is not None:
                                 asyncio.create_task(self._callback_query_handler(update.callback_query))
@@ -80,16 +94,8 @@ class Bot(AiogramBot):
     def callback_query_handler(self, function):
         self._callback_query_handler = function
 
-    def get_file(self, message: Message) -> Optional[InputMedia]:
-        if message.photo is not None:
-            biggest_photo = max(message.photo, key=lambda photo: photo.width * photo.height)
-            return InputMediaPhoto(media=biggest_photo.file_id, caption=message.caption)
-        if message.document is not None:
-            return InputMediaDocument(media=message.document.file_id, caption=message.caption)
-        if message.video is not None:
-            return InputMediaVideo(media=message.video.file_id, caption=message.caption)
-        if message.audio is not None:
-            return InputMediaAudio(media=message.audio.file_id, caption=message.caption)
-        if message.animation is not None:
-            return InputMediaAnimation(media=message.animation.file_id, caption=message.caption)
-        return None
+
+def caption(input_media: List[InputMedia], caption, caption_entities=None):
+    first, *rest = input_media
+    repacked = type(first)(media=first.media, caption=caption, caption_entities=caption_entities)
+    return [repacked] + rest
