@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Sequence, Union
 import aiogram
 from aiogram.types import InputMediaAudio, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message
 import asyncio
 import itertools
+import textwrap
 
 
 SendableAttachment = Union[InputMediaAudio, InputMediaVideo, InputMediaPhoto, InputMediaDocument]
@@ -22,17 +23,28 @@ def _input_media_from_message(message: Message) -> Optional[SendableAttachment]:
     return None
 
 
-class BotHelper:
+def _repack(attachments: Sequence[SendableAttachment], text, entities):
+    first, *rest = attachments
+    repacked_first = type(first)(media=first.media, caption=text, caption_entities=entities)
+    attachments = [repacked_first] + rest
+    return attachments
 
-    def __init__(self, bot: aiogram.Bot):
-        self.bot = bot
+
+_CAPTION_LENGTH_LIMIT = 1024
+_REGULAR_MESSAGE_TEXT_LENGTH_LIMIT = 4096
+
+
+class Bot:
+
+    def __init__(self, token: str):
+        self.inner = aiogram.Bot(token)
         self._update_offset = None
         self._message_handler = None
         self._callback_query_handler = None
 
     async def start(self):
         while True:
-            updates = await self.bot.get_updates(offset=self._update_offset, timeout=20)
+            updates = await self.inner.get_updates(offset=self._update_offset, timeout=20)
             if updates:
                 self._update_offset = max(updates, key=lambda update: update.update_id).update_id + 1
                 message_organizer = _MessageOrganizer()
@@ -52,17 +64,22 @@ class BotHelper:
     def callback_query_handler(self, function):
         self._callback_query_handler = function
 
-    async def send_message(self, chat_id, text, attachments: List[SendableAttachment], entities, *args, **kwargs):
+    async def send_message(self, chat_id, text, attachments: Sequence[SendableAttachment] = (), entities=None, *args, **kwargs):
         if len(attachments) == 0:
-            await self.bot.send_message(
-                chat_id, text, *args, entities=entities, **kwargs,
-            )
+            text_parts = textwrap.wrap(text, _CAPTION_LENGTH_LIMIT) or [""]
+            for part in text_parts:
+                await self.inner.send_message(
+                    chat_id, part, *args, entities=entities, **kwargs,
+                )
         else:
-            first, *rest = attachments
-            repacked_first = type(first)(media=first.media, caption=text, caption_entities=entities)
-            attachments = [repacked_first] + rest
-            await self.bot.send_media_group(
-                chat_id, media=attachments, *args, **kwargs,
+            text_parts = textwrap.wrap(text, _REGULAR_MESSAGE_TEXT_LENGTH_LIMIT) or [""]
+            *beginning, last = text_parts
+            for part in beginning:
+                await self.inner.send_message(
+                    chat_id, part, *args, entities=entities, **kwargs,
+                )
+            await self.inner.send_media_group(
+                chat_id, media=_repack(attachments, last, entities), *args, **kwargs,
             )
 
 

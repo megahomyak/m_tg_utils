@@ -1,4 +1,4 @@
-from .bot import BotHelper, SendableAttachment, NewMessageContext
+from .bot import Bot, SendableAttachment, NewMessageContext
 
 from .base import Base
 
