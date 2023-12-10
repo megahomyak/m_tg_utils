@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Union
 import aiogram
-from aiogram.types import InputMediaAudio, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message
+from aiogram.types import InputMediaAudio, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message, MessageEntity
 import asyncio
 import itertools
 import textwrap
@@ -66,6 +66,7 @@ class Bot:
 
     async def send_message(self, chat_id, text, attachments: Sequence[SendableAttachment] = (), entities=None, *args, **kwargs):
         if len(attachments) == 0:
+            entities: MessageEntity
             text_parts = textwrap.wrap(text, _CAPTION_LENGTH_LIMIT) or [""]
             for part in text_parts:
                 await self.inner.send_message(
@@ -99,6 +100,10 @@ class NewMessageContext:
     @property
     def text(self):
         return self.message.text or self.message.caption
+
+    @property
+    def formatting_entities(self):
+        return self.message.entities or self.message.caption_entities
 
 
 class _MessageOrganizer:
